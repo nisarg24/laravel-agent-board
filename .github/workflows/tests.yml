@@ -1,0 +1,150 @@
+name: Tests & Analysis
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ── Code Style ─────────────────────────────────────────────────────────
+  pint:
+    name: Code Style (Pint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, xml, curl, openssl, pdo, pdo_sqlite, sqlite3, zip, fileinfo
+          coverage: none
+          tools: composer:v2
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: pint-php8.5-${{ hashFiles('**/composer.json') }}
+          restore-keys: pint-php8.5-
+
+      - run: composer install --prefer-dist --no-interaction --no-progress --no-scripts --ansi
+
+      - run: vendor/bin/pint --test --ansi
+
+  # ── Static Analysis ─────────────────────────────────────────────────────
+  phpstan:
+    name: PHPStan (Level 8)
+    runs-on: ubuntu-latest
+    needs: pint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: mbstring, xml, curl, openssl, pdo, pdo_sqlite, sqlite3, zip, fileinfo
+          coverage: none
+          tools: composer:v2
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: phpstan-php8.5-${{ hashFiles('**/composer.json') }}
+          restore-keys: phpstan-php8.5-
+
+      - uses: actions/cache@v4
+        with:
+          path: .phpstan-cache
+          key: phpstan-result-${{ github.ref }}-${{ hashFiles('src/**/*.php') }}
+          restore-keys: phpstan-result-${{ github.ref }}-
+
+      - run: composer install --prefer-dist --no-interaction --no-progress --ansi
+
+      - run: vendor/bin/phpstan analyse --configuration=phpstan.neon --no-progress --ansi --memory-limit=512M
+
+  # ── Test Suite ──────────────────────────────────────────────────────────
+  tests:
+    name: PHP ${{ matrix.php }} — Laravel 13
+    runs-on: ubuntu-latest
+    needs: [ pint, phpstan ]
+
+    strategy:
+      fail-fast: false
+      matrix:
+        php: [ '8.3', '8.4', '8.5' ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, xml, curl, openssl, pdo, pdo_sqlite, sqlite3, zip, fileinfo
+          coverage: none
+          tools: composer:v2
+          ini-values: memory_limit=512M
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: test-php${{ matrix.php }}-laravel13-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            test-php${{ matrix.php }}-laravel13-
+
+      - name: Install dependencies
+        run: |
+          composer require \
+            "laravel/framework:13.*" \
+            "orchestra/testbench:11.*" \
+            --no-interaction --no-update --ansi
+          composer update --prefer-stable --prefer-dist --no-interaction --no-progress --ansi
+
+      - name: Run Unit tests
+        run: vendor/bin/phpunit --testsuite Unit --colors=always
+
+      - name: Run Feature tests
+        run: vendor/bin/phpunit --testsuite Feature --colors=always
+
+  # ── Security Audit ──────────────────────────────────────────────────────
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          coverage: none
+          tools: composer:v2
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: security-php8.5-${{ hashFiles('**/composer.json') }}
+          restore-keys: security-php8.5-
+
+      - run: composer install --prefer-dist --no-interaction --no-progress --ansi
+
+      - run: composer audit --format=json --locked

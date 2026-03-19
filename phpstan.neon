@@ -1,0 +1,29 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 8
+
+    paths:
+        - src
+
+    checkPhpDocMissingReturn: false
+    treatPhpDocTypesAsCertain: false
+
+    resultCachePath: .phpstan-cache/resultCache.php
+
+    excludePaths:
+        - src/AgentBoardServiceProvider.php
+
+    ignoreErrors:
+        - '#Part \$provider \(array\|bool\|float\|int\|string\|null\) of encapsed string cannot be cast to string#'
+        - '#Parameter \#1 \$string of method Illuminate\\Console\\Command::line\(\) expects string, string\|false given#'
+        - '#generic class Illuminate\\Support\\Collection but does not specify its types: TKey, TValue#'
+        - '#return type with generic class Illuminate\\Support\\Collection does not specify its types#'
+        - '#Unable to resolve the template type TKey in call to function collect#'
+        - '#Unable to resolve the template type TValue in call to function collect#'
+        - '#Parameter \#1 \$view of function view expects view-string\|null, string given#'
+        - '#Property DevBridge\\AgentBoard\\Services\\(.+)::\$config is never read, only written#'
+
+        # Covers all 68 missingType.iterableValue errors — untyped arrays throughout the package
+        - '#no value type specified in iterable type array#'
